@@ -13,10 +13,16 @@ import android.provider.Settings
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -26,7 +32,6 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -57,13 +62,19 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Apps
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.Newspaper
+import androidx.compose.material.icons.rounded.NightsStay
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Star
+import androidx.compose.material.icons.rounded.Thunderstorm
+import androidx.compose.material.icons.rounded.WaterDrop
+import androidx.compose.material.icons.rounded.WbSunny
 import androidx.compose.material.icons.rounded.Wifi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -128,7 +139,7 @@ import java.util.Locale
 // ───────────────────────────── Paleta Hisense VIDAA + Sunset ─────────────────────────────
 
 private val Ink = Color(0xFF070B14)
-private val SurfaceGlass = Color(0xCC0D1322)
+private val SurfaceGlass = Color(0xBD0B101D)
 private val SurfaceCard = Color(0xE6141C2E)
 private val TextHi = Color(0xFFFFFFFF)
 private val TextLo = Color(0xFFD0D8EA)
@@ -162,6 +173,10 @@ fun LauncherApp(homeSignal: Int, packageSignal: Int, resumeSignal: Int) {
     var showSettings by remember { mutableStateOf(false) }
     val spotlight = remember { mutableStateOf<TvApp?>(null) }
 
+    // Estados en vivo: Clima y Noticias de Perú
+    var weather by remember { mutableStateOf<WeatherInfo?>(null) }
+    var peruNews by remember { mutableStateOf<List<String>>(emptyList()) }
+
     val now = rememberNow()
     val isDefaultHome = remember(resumeSignal) { checkDefaultHome(context) }
     val scope = rememberCoroutineScope()
@@ -174,12 +189,27 @@ fun LauncherApp(homeSignal: Int, packageSignal: Int, resumeSignal: Int) {
         loaded = true
     }
 
+    // Carga y actualización periódica del clima (cada 30 min) y noticias de Perú (cada 15 min)
+    LaunchedEffect(reload) {
+        while (true) {
+            val w = withContext(Dispatchers.IO) { LiveInfoRepository.fetchWeather() }
+            if (w != null) weather = w
+            delay(30 * 60 * 1000L)
+        }
+    }
+    LaunchedEffect(reload) {
+        while (true) {
+            val news = withContext(Dispatchers.IO) { LiveInfoRepository.fetchPeruNews(limit = 10) }
+            if (news.isNotEmpty()) peruNews = news
+            delay(15 * 60 * 1000L)
+        }
+    }
+
     val byPackage = remember(apps) { apps.associateBy { it.packageName } }
     val recentApps = remember(apps, recents) { recents.mapNotNull { byPackage[it] } }
     val lastUsedApp = recentApps.firstOrNull() ?: apps.firstOrNull()
     val favoriteApps = remember(apps, favorites) { apps.filter { it.packageName in favorites } }
 
-    // Orden estilo VIDAA: Última app usada primero, luego Favoritos, luego el resto
     val homeCarouselApps = remember(apps, recentApps, favoriteApps) {
         val ordered = LinkedHashMap<String, TvApp>()
         recentApps.forEach { ordered[it.packageName] = it }
@@ -242,9 +272,8 @@ fun LauncherApp(homeSignal: Int, packageSignal: Int, resumeSignal: Int) {
             val wide = maxWidth >= 720.dp
             val pad = if (wide) 52.dp else 20.dp
             val cardW = if (wide) 196.dp else 132.dp
-            val cardH = if (wide) 118.dp else 86.dp
+            val cardH = if (wide) 114.dp else 84.dp
 
-            // 1. Fondo panorámico sin personaje + viñeta suave para legibilidad + halo dinámico
             ScenicWallpaperLayer(spotlight)
 
             Column(
@@ -254,10 +283,10 @@ fun LauncherApp(homeSignal: Int, packageSignal: Int, resumeSignal: Int) {
                     .navigationBarsPadding()
                     .imePadding()
             ) {
-                // 2. Barra superior: Marca LYGANE a la izquierda + Perfil ANGEL y RELOJ GRANDE a la derecha
-                TopStatusHeader(now = now, wide = wide, pad = pad)
+                // 1. Barra superior: LYGANE a la izquierda + Perfil ANGEL + CLIMA + RELOJ GRANDE a la derecha
+                TopStatusHeader(now = now, weather = weather, wide = wide, pad = pad)
 
-                // 3. Contenido central según pestaña activa
+                // 2. Contenido central
                 Box(Modifier.weight(1f).fillMaxWidth()) {
                     when {
                         !loaded -> Text(
@@ -278,6 +307,7 @@ fun LauncherApp(homeSignal: Int, packageSignal: Int, resumeSignal: Int) {
                                 focusedApp = spotlight.value ?: lastUsedApp,
                                 carouselApps = homeCarouselApps,
                                 favorites = favorites,
+                                peruNews = peruNews,
                                 firstFocus = firstFocus,
                                 onFocused = onFocused,
                                 onOpen = openApp,
@@ -351,7 +381,7 @@ fun LauncherApp(homeSignal: Int, packageSignal: Int, resumeSignal: Int) {
                     }
                 }
 
-                // 4. Barra de navegación inferior tipo píldora (estilo captura + Hisense VIDAA)
+                // 3. Dock inferior tipo píldora (VIDAA + Referencia)
                 BottomVidaaDock(
                     selected = activeSection,
                     wide = wide,
@@ -391,7 +421,6 @@ private fun ScenicWallpaperLayer(spotlight: State<TvApp?>) {
     val animatedAccent by animateColorAsState(accent, tween(650), label = "accent-glow")
 
     Box(Modifier.fillMaxSize()) {
-        // Imagen de fondo sin personaje (guarda la imagen generada como res/drawable-nodpi/launcher_bg.jpg)
         Image(
             painter = painterResource(id = R.drawable.launcher_bg),
             contentDescription = null,
@@ -399,24 +428,23 @@ private fun ScenicWallpaperLayer(spotlight: State<TvApp?>) {
             modifier = Modifier.fillMaxSize()
         )
 
-        // Degradado sutil inferior y lateral para contraste impecable de textos y tarjetas
+        // Viñeta suave inferior para asegurar lectura sin tapar el cielo ni la casa
         Box(
             Modifier.fillMaxSize().background(
                 Brush.verticalGradient(
-                    0.0f to Color(0x4D060A14),
-                    0.35f to Color(0x1A060A14),
-                    0.68f to Color(0x88060A14),
-                    1.0f to Color(0xE6050811)
+                    0.0f to Color(0x40060A14),
+                    0.42f to Color(0x12060A14),
+                    0.70f to Color(0x80060A14),
+                    1.0f to Color(0xE0050811)
                 )
             )
         )
 
-        // Resplandor ambiental dinámico según la app enfocada
         Box(
             Modifier.fillMaxSize().drawBehind {
                 drawRect(
                     Brush.radialGradient(
-                        0f to animatedAccent.copy(alpha = 0.24f),
+                        0f to animatedAccent.copy(alpha = 0.22f),
                         1f to Color.Transparent,
                         center = Offset(size.width * 0.22f, size.height * 0.78f),
                         radius = size.width * 0.55f
@@ -427,18 +455,18 @@ private fun ScenicWallpaperLayer(spotlight: State<TvApp?>) {
     }
 }
 
-// ───────────────────────────── Header Superior con Reloj Grande ─────────────────────────────
+// ───────────────────────────── Header Superior: Perfil + Clima + Reloj Grande ─────────────────────────────
 
 @Composable
-private fun TopStatusHeader(now: State<Long>, wide: Boolean, pad: Dp) {
+private fun TopStatusHeader(now: State<Long>, weather: WeatherInfo?, wide: Boolean, pad: Dp) {
     val context = LocalContext.current
     val ms = now.value
 
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = pad, vertical = if (wide) 18.dp else 12.dp),
+        Modifier.fillMaxWidth().padding(horizontal = pad, vertical = if (wide) 16.dp else 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Identidad discreta LYGANE Smart TV
+        // Marca discreta LYGANE TV
         Row(
             Modifier.clip(RoundedCornerShape(50))
                 .background(SurfaceGlass)
@@ -447,9 +475,7 @@ private fun TopStatusHeader(now: State<Long>, wide: Boolean, pad: Dp) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Box(
-                Modifier.size(10.dp).clip(CircleShape).background(VidaaTeal)
-            )
+            Box(Modifier.size(9.dp).clip(CircleShape).background(VidaaTeal))
             Text(
                 "LYGANE TV",
                 color = TextHi,
@@ -461,18 +487,18 @@ private fun TopStatusHeader(now: State<Long>, wide: Boolean, pad: Dp) {
 
         Spacer(Modifier.weight(1f))
 
-        // Bloque derecho: Perfil ANGEL + Wi-Fi + RELOJ GRANDE
+        // Bloque derecho: Perfil ANGEL + CLIMA + RELOJ GRANDE
         Row(
             Modifier.clip(RoundedCornerShape(22.dp))
                 .background(SurfaceGlass)
-                .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(22.dp))
-                .padding(horizontal = if (wide) 20.dp else 14.dp, vertical = if (wide) 10.dp else 8.dp),
+                .border(1.dp, Color.White.copy(alpha = 0.16f), RoundedCornerShape(22.dp))
+                .padding(horizontal = if (wide) 18.dp else 12.dp, vertical = if (wide) 9.dp else 7.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(if (wide) 16.dp else 10.dp)
+            horizontalArrangement = Arrangement.spacedBy(if (wide) 14.dp else 9.dp)
         ) {
-            // Avatar minimalista de perfil
+            // Avatar de usuario
             Box(
-                Modifier.size(if (wide) 40.dp else 32.dp)
+                Modifier.size(if (wide) 38.dp else 30.dp)
                     .clip(CircleShape)
                     .background(Brush.linearGradient(listOf(AngelCyan, VidaaTeal))),
                 contentAlignment = Alignment.Center
@@ -481,43 +507,78 @@ private fun TopStatusHeader(now: State<Long>, wide: Boolean, pad: Dp) {
                     Icons.Rounded.Person,
                     contentDescription = null,
                     tint = Ink,
-                    modifier = Modifier.size(if (wide) 24.dp else 19.dp)
+                    modifier = Modifier.size(if (wide) 22.dp else 18.dp)
                 )
             }
 
+            // Nombre ANGEL y fecha
             Column(horizontalAlignment = Alignment.End) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    horizontalArrangement = Arrangement.spacedBy(5.dp)
                 ) {
                     Text(
                         "ANGEL",
                         color = TextHi,
-                        fontSize = if (wide) 15.sp else 13.sp,
+                        fontSize = if (wide) 14.sp else 12.sp,
                         fontWeight = FontWeight.Bold,
                         letterSpacing = 1.sp
                     )
                     Icon(
                         Icons.Rounded.Wifi,
-                        contentDescription = "Wi-Fi conectado",
+                        contentDescription = "Wi-Fi",
                         tint = VidaaTeal,
-                        modifier = Modifier.size(if (wide) 17.dp else 14.dp)
+                        modifier = Modifier.size(if (wide) 16.dp else 13.dp)
                     )
                 }
                 Text(
                     formatDateShort(ms),
                     color = TextLo,
-                    fontSize = if (wide) 12.sp else 10.sp
+                    fontSize = if (wide) 11.sp else 10.sp
                 )
+            }
+
+            // Bloque de CLIMA al lado de la hora
+            if (weather != null) {
+                Box(
+                    Modifier.width(1.dp).height(if (wide) 34.dp else 26.dp)
+                        .background(Color.White.copy(alpha = 0.20f))
+                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(
+                        imageVector = weatherIcon(weather),
+                        contentDescription = weather.conditionText,
+                        tint = Gold,
+                        modifier = Modifier.size(if (wide) 26.dp else 20.dp)
+                    )
+                    Column {
+                        Text(
+                            text = "${weather.tempCelsius}°C",
+                            color = TextHi,
+                            fontSize = if (wide) 20.sp else 15.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        if (wide) {
+                            Text(
+                                text = weather.conditionText,
+                                color = TextLo,
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
+                }
             }
 
             // Divisor vertical
             Box(
-                Modifier.width(1.dp).height(if (wide) 36.dp else 28.dp)
+                Modifier.width(1.dp).height(if (wide) 34.dp else 26.dp)
                     .background(Color.White.copy(alpha = 0.22f))
             )
 
-            // HORA EN TAMAÑO GRANDE
+            // HORA EN GRANDE
             Text(
                 text = formatTime(context, ms),
                 color = TextHi,
@@ -536,7 +597,15 @@ private fun TopStatusHeader(now: State<Long>, wide: Boolean, pad: Dp) {
     }
 }
 
-// ───────────────────────────── Escenario Principal (Saludo + Última App + Carrusel) ─────────────────────────────
+private fun weatherIcon(info: WeatherInfo): ImageVector = when (info.code) {
+    0 -> if (info.isDay) Icons.Rounded.WbSunny else Icons.Rounded.NightsStay
+    1, 2, 3, 45, 48 -> Icons.Rounded.Cloud
+    51, 53, 55, 61, 63, 65, 80, 81, 82 -> Icons.Rounded.WaterDrop
+    95, 96, 99 -> Icons.Rounded.Thunderstorm
+    else -> Icons.Rounded.Cloud
+}
+
+// ───────────────────────────── Escenario Principal + Cintillo de Noticias Perú ─────────────────────────────
 
 @Composable
 private fun VidaaHomeStage(
@@ -549,6 +618,7 @@ private fun VidaaHomeStage(
     focusedApp: TvApp?,
     carouselApps: List<TvApp>,
     favorites: Set<String>,
+    peruNews: List<String>,
     firstFocus: FocusRequester,
     onFocused: (TvApp) -> Unit,
     onOpen: (TvApp) -> Unit,
@@ -558,14 +628,12 @@ private fun VidaaHomeStage(
         Modifier.fillMaxSize(),
         verticalArrangement = Arrangement.Bottom
     ) {
-        // Fila superior al carrusel: Saludo "ANGEL Estamos listos para usar" a la izquierda
-        // y tarjeta destacada de "Última app usada" a la derecha
+        // Fila de Saludo "ANGEL Estamos listos para usar" + Tarjeta Última App Usada
         Row(
             Modifier.fillMaxWidth().padding(horizontal = pad),
             verticalAlignment = Alignment.Bottom,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            // Bloque de bienvenida estilo captura
             Column(Modifier.weight(1f)) {
                 Text(
                     text = buildAnnotatedString {
@@ -579,8 +647,8 @@ private fun VidaaHomeStage(
                             append("!")
                         }
                     },
-                    fontSize = if (wide) 52.sp else 32.sp,
-                    lineHeight = if (wide) 56.sp else 36.sp,
+                    fontSize = if (wide) 50.sp else 30.sp,
+                    lineHeight = if (wide) 54.sp else 34.sp,
                     style = TextStyle(
                         shadow = Shadow(
                             color = Color(0x99000000),
@@ -593,7 +661,7 @@ private fun VidaaHomeStage(
                 Text(
                     text = "Estamos listos para usar",
                     color = TextHi.copy(alpha = 0.94f),
-                    fontSize = if (wide) 24.sp else 16.sp,
+                    fontSize = if (wide) 23.sp else 15.sp,
                     fontWeight = FontWeight.Medium,
                     style = TextStyle(
                         shadow = Shadow(
@@ -603,17 +671,15 @@ private fun VidaaHomeStage(
                         )
                     )
                 )
-                Spacer(Modifier.height(10.dp))
-                // Línea decorativa azul igual que en el diseño de referencia
+                Spacer(Modifier.height(8.dp))
                 Box(
-                    Modifier.width(if (wide) 78.dp else 54.dp)
+                    Modifier.width(if (wide) 76.dp else 52.dp)
                         .height(4.dp)
                         .clip(RoundedCornerShape(50))
                         .background(Brush.horizontalGradient(listOf(AngelCyan, VidaaTeal)))
                 )
             }
 
-            // Tarjeta rápida de la Última App Usada (estilo VIDAA Quick Resume)
             if (lastUsedApp != null) {
                 LastUsedAppBadge(
                     app = lastUsedApp,
@@ -624,9 +690,15 @@ private fun VidaaHomeStage(
             }
         }
 
-        Spacer(Modifier.height(if (wide) 22.dp else 14.dp))
+        Spacer(Modifier.height(if (wide) 14.dp else 10.dp))
 
-        // Etiqueta dinámica de la app enfocada actualmente
+        // Cintillo minimalista de Últimas Noticias de Perú (no opaca la pantalla)
+        if (peruNews.isNotEmpty()) {
+            PeruNewsTicker(headlines = peruNews, wide = wide, pad = pad)
+            Spacer(Modifier.height(if (wide) 12.dp else 8.dp))
+        }
+
+        // Nombre de la app enfocada
         if (focusedApp != null) {
             Row(
                 Modifier.padding(horizontal = pad),
@@ -636,7 +708,7 @@ private fun VidaaHomeStage(
                 Text(
                     text = focusedApp.name,
                     color = TextHi,
-                    fontSize = if (wide) 16.sp else 14.sp,
+                    fontSize = if (wide) 15.sp else 13.sp,
                     fontWeight = FontWeight.SemiBold
                 )
                 Text(
@@ -647,9 +719,9 @@ private fun VidaaHomeStage(
             }
         }
 
-        // Carrusel horizontal estilo Hisense VIDAA / captura de referencia
+        // Carrusel horizontal de aplicaciones
         LazyRow(
-            contentPadding = PaddingValues(horizontal = pad, vertical = 14.dp),
+            contentPadding = PaddingValues(horizontal = pad, vertical = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(if (wide) 18.dp else 12.dp)
         ) {
             itemsIndexed(carouselApps, key = { _, a -> a.packageName }) { index, app ->
@@ -667,6 +739,77 @@ private fun VidaaHomeStage(
                     onToggleFavorite = onToggleFavorite
                 )
             }
+        }
+    }
+}
+
+/** Barra ultrafina translúcida que rota los titulares de Perú cada 7 segundos sin bloquear el paisaje. */
+@Composable
+private fun PeruNewsTicker(headlines: List<String>, wide: Boolean, pad: Dp) {
+    var index by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(headlines) {
+        index = 0
+        while (headlines.size > 1) {
+            delay(7000L)
+            index = (index + 1) % headlines.size
+        }
+    }
+
+    val currentHeadline = headlines.getOrElse(index) { "" }
+    val shape = RoundedCornerShape(12.dp)
+
+    Row(
+        Modifier.fillMaxWidth()
+            .padding(horizontal = pad)
+            .clip(shape)
+            .background(Color(0x99090E1A))
+            .border(1.dp, Color.White.copy(alpha = 0.12f), shape)
+            .padding(horizontal = if (wide) 14.dp else 10.dp, vertical = if (wide) 7.dp else 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        // Etiqueta compacta PERÚ
+        Row(
+            Modifier.clip(RoundedCornerShape(6.dp))
+                .background(Color(0xFFD92B3A))
+                .padding(horizontal = 7.dp, vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Icon(
+                Icons.Rounded.Newspaper,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(if (wide) 13.dp else 11.dp)
+            )
+            Text(
+                text = "PERÚ",
+                color = Color.White,
+                fontSize = if (wide) 10.sp else 9.sp,
+                fontWeight = FontWeight.ExtraBold,
+                letterSpacing = 1.sp
+            )
+        }
+
+        // Titular animado en una sola línea
+        AnimatedContent(
+            targetState = currentHeadline,
+            transitionSpec = {
+                (slideInVertically { it } + fadeIn(tween(350))) togetherWith
+                    (slideOutVertically { -it } + fadeOut(tween(300)))
+            },
+            label = "news-ticker",
+            modifier = Modifier.weight(1f)
+        ) { headline ->
+            Text(
+                text = headline,
+                color = TextHi.copy(alpha = 0.95f),
+                fontSize = if (wide) 13.sp else 11.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }
@@ -693,17 +836,17 @@ private fun LastUsedAppBadge(
                 shape = shape
             )
             .clickable(interactionSource = source, indication = null, role = Role.Button, onClick = onOpen)
-            .padding(horizontal = if (wide) 16.dp else 12.dp, vertical = if (wide) 12.dp else 9.dp),
+            .padding(horizontal = if (wide) 16.dp else 12.dp, vertical = if (wide) 11.dp else 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Box(
-            Modifier.size(if (wide) 46.dp else 36.dp)
+            Modifier.size(if (wide) 44.dp else 34.dp)
                 .clip(RoundedCornerShape(12.dp))
                 .background(app.accent.copy(alpha = 0.25f)),
             contentAlignment = Alignment.Center
         ) {
-            Image(app.icon, contentDescription = app.name, modifier = Modifier.size(if (wide) 34.dp else 26.dp))
+            Image(app.icon, contentDescription = app.name, modifier = Modifier.size(if (wide) 32.dp else 24.dp))
         }
 
         Column {
@@ -723,7 +866,7 @@ private fun LastUsedAppBadge(
             Text(
                 text = app.name,
                 color = TextHi,
-                fontSize = if (wide) 16.sp else 13.sp,
+                fontSize = if (wide) 15.sp else 13.sp,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -733,10 +876,10 @@ private fun LastUsedAppBadge(
 
         if (wide) {
             Box(
-                Modifier.size(34.dp).clip(CircleShape).background(if (focused) Color.White else AngelCyan),
+                Modifier.size(32.dp).clip(CircleShape).background(if (focused) Color.White else AngelCyan),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(Icons.Rounded.PlayArrow, contentDescription = "Abrir", tint = Ink, modifier = Modifier.size(20.dp))
+                Icon(Icons.Rounded.PlayArrow, contentDescription = "Abrir", tint = Ink, modifier = Modifier.size(19.dp))
             }
         }
     }
@@ -819,7 +962,6 @@ private fun VidaaAppCard(
                 modifier = Modifier.size(height * 0.56f)
             )
 
-            // Etiqueta superior izquierda si es la última app usada
             if (isLastUsed) {
                 Box(
                     Modifier.align(Alignment.TopStart)
@@ -832,7 +974,6 @@ private fun VidaaAppCard(
                 }
             }
 
-            // Estrella de favorito
             if (isFavorite) {
                 Box(
                     Modifier.align(Alignment.TopEnd)
@@ -846,7 +987,6 @@ private fun VidaaAppCard(
                 }
             }
 
-            // Barra inferior con nombre al enfocar (igual que la tarjeta seleccionada en la referencia)
             if (focused) {
                 Box(
                     Modifier.align(Alignment.BottomCenter)
@@ -943,7 +1083,7 @@ private fun AppGridOverlay(
     }
 }
 
-// ───────────────────────────── Dock Inferior Tipo Píldora (VIDAA + Referencia) ─────────────────────────────
+// ───────────────────────────── Dock Inferior Tipo Píldora ─────────────────────────────
 
 @Composable
 private fun BottomVidaaDock(
@@ -955,7 +1095,7 @@ private fun BottomVidaaDock(
     val shape = RoundedCornerShape(50)
     Row(
         Modifier.fillMaxWidth()
-            .padding(horizontal = pad, vertical = if (wide) 14.dp else 10.dp)
+            .padding(horizontal = pad, vertical = if (wide) 12.dp else 8.dp)
             .clip(shape)
             .background(SurfaceGlass)
             .border(1.dp, Color.White.copy(alpha = 0.16f), shape)
@@ -987,7 +1127,7 @@ private fun BottomVidaaDock(
                 Modifier.clip(RoundedCornerShape(50))
                     .background(bg)
                     .clickable(interactionSource = source, indication = null, role = Role.Tab) { onSelect(item) }
-                    .padding(horizontal = if (wide) 22.dp else 12.dp, vertical = if (wide) 10.dp else 8.dp),
+                    .padding(horizontal = if (wide) 22.dp else 12.dp, vertical = if (wide) 9.dp else 7.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
@@ -1103,9 +1243,9 @@ private fun SettingsDialog(
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 if (!isDefaultHome) {
                     DialogPill("Usar como pantalla de inicio", true, Modifier.focusRequester(firstButton), onSetHome)
-                    DialogPill("Actualizar lista de apps", false, Modifier, onRefresh)
+                    DialogPill("Actualizar apps, clima y noticias", false, Modifier, onRefresh)
                 } else {
-                    DialogPill("Actualizar lista de apps", true, Modifier.focusRequester(firstButton), onRefresh)
+                    DialogPill("Actualizar apps, clima y noticias", true, Modifier.focusRequester(firstButton), onRefresh)
                 }
                 DialogPill("Cerrar", false, Modifier, onClose)
             }
