@@ -983,7 +983,8 @@ private fun rememberNow(): State<Long> {
 }
 
 private fun isTelevision(context: Context): Boolean {
-val mode = (context.getSystemService(Context.UI_MODE_SERVICE) as? UiModeManager)?.currentModeType    return mode == Configuration.UI_MODE_TYPE_TELEVISION ||
+    val mode = (context.getSystemService(Context.UI_MODE_SERVICE) as? UiModeManager)?.currentModeType
+    return mode == Configuration.UI_MODE_TYPE_TELEVISION ||
         context.packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)
 }
 
