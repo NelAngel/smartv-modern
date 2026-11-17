@@ -1,12 +1,24 @@
+
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <uses-feature android:name="android.software.leanback" android:required="false" />
-    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+
+    <!-- Permisos -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Compatibilidad -->
+    <uses-feature
+        android:name="android.software.leanback"
+        android:required="false" />
+
+    <uses-feature
+        android:name="android.hardware.touchscreen"
+        android:required="false" />
 
     <queries>
         <intent>
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
         </intent>
+
         <intent>
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
@@ -21,11 +33,6 @@
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
 
-        <!--
-          singleTask: solo existe una instancia del launcher. Cuando el usuario pulsa Inicio
-          (estando LYGANE como launcher predeterminado) o sale de otra app, el sistema vuelve
-          a esta misma pantalla en lugar de crear otra encima.
-        -->
         <activity
             android:name=".MainActivity"
             android:resizeableActivity="true"
@@ -34,14 +41,25 @@
             android:stateNotNeeded="true"
             android:resumeWhilePausing="true"
             android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|smallestScreenSize|uiMode|density|fontScale|layoutDirection|locale">
+
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
+
+            <!-- Launcher predeterminado -->
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+
         </activity>
     </application>
+
 </manifest>
